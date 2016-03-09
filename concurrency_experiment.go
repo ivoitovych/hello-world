@@ -1,4 +1,3 @@
-
 // This is to play with basic concurrency concepts in golang
 
 package main
@@ -27,7 +26,7 @@ func main() {
 
 	const inputChannelsNumber int = 6
 
-    fmt.Println("Hi! Let's the concurrency experiment begin...")
+	fmt.Println("Hi! Let's the concurrency experiment begin...")
 
 	inputData := make(chan float64);
 	
