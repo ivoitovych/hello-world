@@ -18,9 +18,9 @@ func dataSource(dataChannel chan float64, sourceNum int) {
 		delay := time.Millisecond * time.Duration(rand.Int31n(delayMaxMs))
 		time.Sleep(delay)
 		// generate the data
-		number := outputMin + (outputMax - outputMin) * rand.Float64()
-		fmt.Printf("Source %v puts data %v into the source channel after a delay of %v\n", sourceNum, number, delay)
-		dataChannel <- number
+		data := outputMin + (outputMax - outputMin) * rand.Float64()
+		fmt.Printf("Source %v puts data %v into the source channel after a delay of %v\n", sourceNum, data, delay)
+		dataChannel <- data
 	}
 }
 
@@ -59,7 +59,7 @@ func loadBalancer(inputChannel chan float64, processingChannels []chan float64) 
 		fmt.Printf("Load balancer found %v free channels\n", freeChannels)
 		if freeChannels > 0 {
 			selectedChannel := rand.Intn(freeChannels)
-			fmt.Printf("Dispatching data %v to processing channel %v\n", inputData, selectedChannel)
+			fmt.Printf("Load balancer is dispatching the data %v to processing channel %v\n", inputData, selectedChannel)
 			processingChannels[selectedChannel] <- inputData
 		} else {
 			// no free channel found. drop the data, report an error
@@ -75,15 +75,15 @@ func main() {
 	
 	fmt.Println("Let's the concurrency experiment begin...")
 
+	inputData := make(chan float64);
+	balancerData := make(chan float64);
+	outputData := make(chan float64);
+	
 	processingChannels := make([]chan float64, processingChannelsNumber)
 	for i := 0; i < processingChannelsNumber; i++ {
 		processingChannels[i] = make(chan float64);
 	}
 
-	inputData := make(chan float64);
-	balancerData := make(chan float64);
-	outputData := make(chan float64);
-	
 	// start data processors
 	for i := 0; i < processingChannelsNumber; i++ {
 		go dataProcessor(processingChannels[i], outputData, i)
@@ -102,7 +102,7 @@ func main() {
 	go func() {
 		for {
 			data := <-inputData
-			fmt.Printf("Data %v is received from data sources and passed to the load balancer.\n", data)
+			fmt.Printf("Main routine received the data %v from data sources and passed it to the load balancer.\n", data)
 			balancerData <- data
 		}
 	}()
@@ -110,7 +110,7 @@ func main() {
 	// receive output data (this is the main thread's main loop)
 	for {
 		data := <-outputData;
-		fmt.Printf("Output data is received: %v\n", data);
+		fmt.Printf("Main routine received the output data %v\n", data);
 	}
 
 }
