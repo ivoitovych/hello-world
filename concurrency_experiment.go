@@ -43,9 +43,22 @@ func dataProcessor(inputChannel chan float64, outputChannel chan float64, proces
 
 }
 
+var channelStats []int64
+
+func balancerStats(channelToIncrement int) {
+	for len(channelStats) < channelToIncrement + 1 { channelStats = append(channelStats, 0); }
+	channelStats[channelToIncrement]++
+	sum := channelStats[0]
+	for i := 1; i < len(channelStats); i++ { sum += channelStats[i]; }
+	fmt.Printf("Load balancer stats: ");
+	for _, v := range channelStats {
+		fmt.Printf("%d%% ", (v * 100) / sum)
+	}
+	fmt.Println();
+}
+
 func loadBalancer(inputChannel chan float64, processingChannels []chan float64) {
 	outputsNumber := len(processingChannels)
-	channelStats := make([]int64, outputsNumber);
 	for {
 		inputData := <-inputChannel
 		fmt.Printf("Load balancer received %v data\n", inputData)
@@ -63,15 +76,7 @@ func loadBalancer(inputChannel chan float64, processingChannels []chan float64) 
 			fmt.Printf("Load balancer is dispatching the data %v to the processing channel %v\n",
 				inputData, selectedChannel)
 			processingChannels[selectedChannel] <- inputData
-			channelStats[selectedChannel]++
-			// print statistics
-			sum := channelStats[0]
-			for i := 1; i < len(channelStats); i++ { sum += channelStats[i]; }
-			fmt.Printf("Load balancer stats: ");
-			for _, v := range channelStats {
-				fmt.Printf("%d%% ", (v * 100) / sum)
-			}
-			fmt.Println();
+			balancerStats(selectedChannel); // update and print balancer stats
 		} else {
 			// no free channel found. drop the data, report an error
 			fmt.Printf("Load balancer found no free processing channel. Dropping the data %v\n", inputData)
