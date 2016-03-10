@@ -37,7 +37,8 @@ func dataProcessor(inputChannel chan float64, outputChannel chan float64, proces
 		// process the data
 		outputData := inputData// TODO: Do the actual processing
 		outputChannel <- outputData
-		fmt.Printf("Processor %v turned input data %v into output data %v with processing delay of %v\n", processorNumber, inputData, outputData, delay)
+		fmt.Printf("Processor %v turned input data %v into output data %v with processing delay of %v\n",
+			processorNumber, inputData, outputData, delay)
 	}
 
 }
@@ -59,7 +60,8 @@ func loadBalancer(inputChannel chan float64, processingChannels []chan float64) 
 		fmt.Printf("Load balancer found %v free channels\n", freeChannels)
 		if freeChannels > 0 {
 			selectedChannel := freeChannelIndices[rand.Intn(freeChannels)]
-			fmt.Printf("Load balancer is dispatching the data %v to the processing channel %v\n", inputData, selectedChannel)
+			fmt.Printf("Load balancer is dispatching the data %v to the processing channel %v\n",
+				inputData, selectedChannel)
 			processingChannels[selectedChannel] <- inputData
 			channelStats[selectedChannel]++
 			// print statistics
@@ -111,7 +113,8 @@ func main() {
 	go func() {
 		for {
 			data := <-inputData
-			fmt.Printf("Main routine received the data %v from data sources and passed it to the load balancer.\n", data)
+			fmt.Printf("Main routine received the data %v from sources and passed it to the load balancer.\n",
+				data)
 			balancerData <- data
 		}
 	}()
