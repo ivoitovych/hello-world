@@ -26,8 +26,8 @@ func dataSource(dataChannel chan float64, sourceNum int) {
 }
 
 type Task struct {
-  source, intermediate, result float64
-  error string
+	source, intermediate, result float64
+	error string
 }
 
 func processingStage(inputChannel chan Task, outputChannel chan Task, stageNumber int) {
