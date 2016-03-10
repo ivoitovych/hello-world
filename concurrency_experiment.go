@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"time"
 )
@@ -24,9 +25,58 @@ func dataSource(dataChannel chan float64, sourceNum int) {
 	}
 }
 
-func dataProcessor(inputChannel chan float64, outputChannel chan float64, processorNumber int) {
+type Task struct {
+  source, intermediate, result float64
+  error string
+}
+
+func processingStage(inputChannel chan Task, outputChannel chan Task, stageNumber int) {
+	for {
+		task := <-inputChannel;
+		if task.error == "" {
+			switch stageNumber {
+			case 0:
+				if task.source >= 0.0 {
+					task.intermediate = math.Sqrt( task.source )
+				} else {
+					task.error = "Negative Sqrt argument"
+				}
+			case 1:
+				task.result = task.intermediate * task.intermediate;
+			case 2:
+				if task.result != task.source {
+					task.error = "Source and result mismatch"
+				}
+			}
+		}
+		outputChannel <- task;
+	}
+}
+
+func dataProcessor(inputChannel chan float64, outputChannel chan Task, processorNumber int) {
 
 	const delayMaxMs int32 = 1000;
+
+	const numberOfPipelineStages = 3
+
+	// create the processing pipeline
+	pipelineInput := make(chan Task)
+	pipelineOutput := pipelineInput
+	for stage := 0; stage < numberOfPipelineStages; stage++ {
+		pipelineIntermediate := make(chan Task)
+		go processingStage(pipelineOutput, pipelineIntermediate, stage)
+		pipelineOutput = pipelineIntermediate
+	}
+
+	// forwart pipeline output to processor output
+	go func() {
+		for {
+			data := <-pipelineOutput
+			fmt.Printf("Processor %v obtained output data %v from the pipeline\n",
+				processorNumber, data)
+			outputChannel <- data
+		}
+	}()
 
 	for {
 		inputData := <-inputChannel
@@ -34,11 +84,9 @@ func dataProcessor(inputChannel chan float64, outputChannel chan float64, proces
 		// simulate a processing delay
 		delay := time.Millisecond * time.Duration(rand.Int31n(delayMaxMs))
 		time.Sleep(delay)
-		// process the data
-		outputData := inputData// TODO: Do the actual processing
-		outputChannel <- outputData
-		fmt.Printf("Processor %v turned input data %v into output data %v with processing delay of %v\n",
-			processorNumber, inputData, outputData, delay)
+		fmt.Printf("Processor %v puts input data %v into the pipeline after processing delay of %v\n",
+			processorNumber, inputData, delay)
+		pipelineInput <- Task{source: inputData}
 	}
 
 }
@@ -94,7 +142,7 @@ func main() {
 
 	inputData := make(chan float64);
 	balancerData := make(chan float64);
-	outputData := make(chan float64);
+	outputData := make(chan Task);
 	
 	processingChannels := make([]chan float64, processingChannelsNumber)
 	for i := 0; i < processingChannelsNumber; i++ {
