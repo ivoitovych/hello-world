@@ -11,7 +11,7 @@ import (
 func dataSource(dataChannel chan float64, sourceNum int) {
 
 	const outputMin, outputMax float64 = -100, 100
-	const delayMaxMs int32 = 100;
+	const delayMaxMs int32 = 1000;
 
 	for {
 		// simulate the data generation delay
@@ -43,27 +43,36 @@ func dataProcessor(inputChannel chan float64, outputChannel chan float64, proces
 }
 
 func loadBalancer(inputChannel chan float64, processingChannels []chan float64) {
-	const channelCapacityMax int = 2 // to simulate some channel capacity limit
 	outputsNumber := len(processingChannels)
+	channelStats := make([]int64, outputsNumber);
 	for {
 		inputData := <-inputChannel
 		fmt.Printf("Load balancer received %v data\n", inputData)
 		// choose one of the free input channels
 		freeChannelIndices := make([]int, 0, outputsNumber)
 		for i :=0; i < outputsNumber; i++ {
-			if len(processingChannels[i]) <= channelCapacityMax {
+			if len(processingChannels[i]) < cap(processingChannels[i]) {
 				freeChannelIndices = append(freeChannelIndices, i)
 			}
 		}
 		freeChannels := len(freeChannelIndices)
 		fmt.Printf("Load balancer found %v free channels\n", freeChannels)
 		if freeChannels > 0 {
-			selectedChannel := rand.Intn(freeChannels)
-			fmt.Printf("Load balancer is dispatching the data %v to processing channel %v\n", inputData, selectedChannel)
+			selectedChannel := freeChannelIndices[rand.Intn(freeChannels)]
+			fmt.Printf("Load balancer is dispatching the data %v to the processing channel %v\n", inputData, selectedChannel)
 			processingChannels[selectedChannel] <- inputData
+			channelStats[selectedChannel]++
+			// print statistics
+			sum := channelStats[0]
+			for i := 1; i < len(channelStats); i++ { sum += channelStats[i]; }
+			fmt.Printf("Load balancer stats: ");
+			for _, v := range channelStats {
+				fmt.Printf("%d%% ", (v * 100) / sum)
+			}
+			fmt.Println();
 		} else {
 			// no free channel found. drop the data, report an error
-			fmt.Printf("Load balancer found no free processing channel. Dropping the data %v\n", inputData);
+			fmt.Printf("Load balancer found no free processing channel. Dropping the data %v\n", inputData)
 		}
 	}
 }
@@ -72,6 +81,7 @@ func main() {
 
 	const inputChannelsNumber int = 6
 	const processingChannelsNumber int = 5
+	const processingChannelCapacity int = 3
 	
 	fmt.Println("Let's the concurrency experiment begin...")
 
@@ -81,7 +91,7 @@ func main() {
 	
 	processingChannels := make([]chan float64, processingChannelsNumber)
 	for i := 0; i < processingChannelsNumber; i++ {
-		processingChannels[i] = make(chan float64);
+		processingChannels[i] = make(chan float64, processingChannelCapacity)
 	}
 
 	// start data processors
@@ -91,7 +101,6 @@ func main() {
 	
 	// start the load balancer
 	go loadBalancer(balancerData, processingChannels)
-	//go loadBalancer(inputData, processingChannels)
 	
 	// start input data sources
 	for i := 0; i < inputChannelsNumber; i++ {
@@ -110,7 +119,7 @@ func main() {
 	// receive output data (this is the main thread's main loop)
 	for {
 		data := <-outputData;
-		fmt.Printf("Main routine received the output data %v\n", data);
+		fmt.Printf("Main routine received the output data %v\n", data)
 	}
 
 }
