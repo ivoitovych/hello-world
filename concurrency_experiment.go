@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"time"
 )
@@ -24,9 +25,58 @@ func dataSource(dataChannel chan float64, sourceNum int) {
 	}
 }
 
-func dataProcessor(inputChannel chan float64, outputChannel chan float64, processorNumber int) {
+type Task struct {
+	source, intermediate, result float64
+	error string
+}
+
+func processingStage(inputChannel chan Task, outputChannel chan Task, stageNumber int) {
+	for {
+		task := <-inputChannel;
+		if task.error == "" {
+			switch stageNumber {
+			case 0:
+				if task.source >= 0.0 {
+					task.intermediate = math.Sqrt( task.source )
+				} else {
+					task.error = "Negative Sqrt argument"
+				}
+			case 1:
+				task.result = task.intermediate * task.intermediate;
+			case 2:
+				if task.result != task.source {
+					task.error = "Source and result mismatch"
+				}
+			}
+		}
+		outputChannel <- task;
+	}
+}
+
+func dataProcessor(inputChannel chan float64, outputChannel chan Task, processorNumber int) {
 
 	const delayMaxMs int32 = 1000;
+
+	const numberOfPipelineStages = 3
+
+	// create the processing pipeline
+	pipelineInput := make(chan Task)
+	pipelineOutput := pipelineInput
+	for stage := 0; stage < numberOfPipelineStages; stage++ {
+		pipelineIntermediate := make(chan Task)
+		go processingStage(pipelineOutput, pipelineIntermediate, stage)
+		pipelineOutput = pipelineIntermediate
+	}
+
+	// forwart pipeline output to processor output
+	go func() {
+		for {
+			data := <-pipelineOutput
+			fmt.Printf("Processor %v obtained output data %v from the pipeline\n",
+				processorNumber, data)
+			outputChannel <- data
+		}
+	}()
 
 	for {
 		inputData := <-inputChannel
@@ -34,17 +84,29 @@ func dataProcessor(inputChannel chan float64, outputChannel chan float64, proces
 		// simulate a processing delay
 		delay := time.Millisecond * time.Duration(rand.Int31n(delayMaxMs))
 		time.Sleep(delay)
-		// process the data
-		outputData := inputData// TODO: Do the actual processing
-		outputChannel <- outputData
-		fmt.Printf("Processor %v turned input data %v into output data %v with processing delay of %v\n", processorNumber, inputData, outputData, delay)
+		fmt.Printf("Processor %v puts input data %v into the pipeline after processing delay of %v\n",
+			processorNumber, inputData, delay)
+		pipelineInput <- Task{source: inputData}
 	}
 
 }
 
+var channelStats []int64
+
+func balancerStats(channelToIncrement int) {
+	for len(channelStats) < channelToIncrement + 1 { channelStats = append(channelStats, 0); }
+	channelStats[channelToIncrement]++
+	sum := channelStats[0]
+	for i := 1; i < len(channelStats); i++ { sum += channelStats[i]; }
+	fmt.Printf("Load balancer stats: ");
+	for _, v := range channelStats {
+		fmt.Printf("%d%% ", (v * 100) / sum)
+	}
+	fmt.Println();
+}
+
 func loadBalancer(inputChannel chan float64, processingChannels []chan float64) {
 	outputsNumber := len(processingChannels)
-	channelStats := make([]int64, outputsNumber);
 	for {
 		inputData := <-inputChannel
 		fmt.Printf("Load balancer received %v data\n", inputData)
@@ -59,17 +121,10 @@ func loadBalancer(inputChannel chan float64, processingChannels []chan float64) 
 		fmt.Printf("Load balancer found %v free channels\n", freeChannels)
 		if freeChannels > 0 {
 			selectedChannel := freeChannelIndices[rand.Intn(freeChannels)]
-			fmt.Printf("Load balancer is dispatching the data %v to the processing channel %v\n", inputData, selectedChannel)
+			fmt.Printf("Load balancer is dispatching the data %v to the processing channel %v\n",
+				inputData, selectedChannel)
 			processingChannels[selectedChannel] <- inputData
-			channelStats[selectedChannel]++
-			// print statistics
-			sum := channelStats[0]
-			for i := 1; i < len(channelStats); i++ { sum += channelStats[i]; }
-			fmt.Printf("Load balancer stats: ");
-			for _, v := range channelStats {
-				fmt.Printf("%d%% ", (v * 100) / sum)
-			}
-			fmt.Println();
+			balancerStats(selectedChannel); // update and print balancer stats
 		} else {
 			// no free channel found. drop the data, report an error
 			fmt.Printf("Load balancer found no free processing channel. Dropping the data %v\n", inputData)
@@ -87,7 +142,7 @@ func main() {
 
 	inputData := make(chan float64);
 	balancerData := make(chan float64);
-	outputData := make(chan float64);
+	outputData := make(chan Task);
 	
 	processingChannels := make([]chan float64, processingChannelsNumber)
 	for i := 0; i < processingChannelsNumber; i++ {
@@ -111,7 +166,8 @@ func main() {
 	go func() {
 		for {
 			data := <-inputData
-			fmt.Printf("Main routine received the data %v from data sources and passed it to the load balancer.\n", data)
+			fmt.Printf("Main routine received the data %v from sources and passed it to the load balancer.\n",
+				data)
 			balancerData <- data
 		}
 	}()
